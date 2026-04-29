@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<link rel="apple-touch-icon" href="favicon.png">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PickBros">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PickBros Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0a0a; color:#fff; font-family:'DM Sans',sans-serif; min-height:100vh; }
+  body::before { content:''; position:fixed; top:-200px; left:50%; transform:translateX(-50%); width:600px; height:600px; background:radial-gradient(circle,rgba(0,230,118,0.08) 0%,transparent 70%); pointer-events:none; z-index:0; }
+  .wrap { max-width:680px; margin:0 auto; padding:24px 20px; position:relative; z-index:1; }
+  .logo { font-family:'Black Han Sans',sans-serif; font-size:22px; display:flex; align-items:center; gap:8px; margin-bottom:32px; }
+  .logo span:last-child { color:#00E676; }
+  .admin-badge { background:rgba(255,100,50,0.15); border:1px solid rgba(255,100,50,0.3); color:#ff6432; font-size:11px; font-weight:700; letter-spacing:2px; padding:4px 10px; border-radius:100px; }
+  
+  /* LOGIN */
+  .login-card { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:24px; padding:40px; max-width:400px; margin:80px auto; }
+  .login-card h2 { font-family:'Black Han Sans',sans-serif; font-size:28px; margin-bottom:8px; }
+  .login-card p { color:rgba(255,255,255,0.4); font-size:14px; margin-bottom:32px; }
+  input { width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:14px 16px; color:#fff; font-family:'DM Sans',sans-serif; font-size:15px; outline:none; margin-bottom:12px; }
+  input:focus { border-color:rgba(0,230,118,0.5); }
+  .btn { width:100%; padding:14px; border-radius:12px; border:none; background:#00E676; color:#000; font-family:'DM Sans',sans-serif; font-weight:700; font-size:15px; cursor:pointer; transition:opacity 0.2s; }
+  .btn:hover { opacity:0.85; }
+  .btn.secondary { background:rgba(255,255,255,0.08); color:#fff; margin-top:8px; }
+  .err { color:#ff6b6b; font-size:13px; text-align:center; margin-bottom:12px; }
+
+  /* MAIN */
+  .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:28px; }
+  .section-title { font-family:'Black Han Sans',sans-serif; font-size:20px; margin-bottom:16px; color:#00E676; letter-spacing:1px; text-transform:uppercase; }
+  
+  /* TABS */
+  .tabs { display:flex; gap:8px; margin-bottom:28px; }
+  .tab { padding:8px 20px; border-radius:100px; border:1px solid rgba(255,255,255,0.1); background:transparent; color:rgba(255,255,255,0.4); font-family:'DM Sans',sans-serif; font-weight:600; font-size:13px; cursor:pointer; transition:all 0.2s; }
+  .tab.active { background:#00E676; color:#000; border-color:transparent; }
+
+  /* MATCH CARD */
+  .match-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:20px; margin-bottom:12px; }
+  .match-card.has-result { border-color:rgba(0,230,118,0.25); background:rgba(0,230,118,0.04); }
+  .match-meta { font-size:11px; color:rgba(255,255,255,0.3); letter-spacing:1px; text-transform:uppercase; margin-bottom:12px; }
+  .match-teams { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .team { display:flex; flex-direction:column; align-items:center; gap:4px; flex:1; }
+  .team-flag { font-size:28px; }
+  .team-name { font-size:12px; color:rgba(255,255,255,0.6); text-align:center; }
+  .score-area { display:flex; align-items:center; gap:8px; }
+  .score-input { width:52px; height:52px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:12px; color:#fff; font-size:24px; font-weight:800; text-align:center; font-family:'DM Sans',sans-serif; outline:none; }
+  .score-input:focus { border-color:#00E676; }
+  .score-sep { color:rgba(255,255,255,0.3); font-size:20px; }
+  .confirm-btn { width:100%; padding:11px; border-radius:10px; border:none; background:#00E676; color:#000; font-weight:700; font-size:13px; cursor:pointer; margin-top:14px; transition:opacity 0.2s; }
+  .confirm-btn:hover { opacity:0.85; }
+  .confirm-btn:disabled { opacity:0.4; cursor:default; }
+  .result-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(0,230,118,0.15); color:#00E676; font-size:12px; font-weight:700; padding:4px 10px; border-radius:100px; margin-top:10px; }
+
+  /* LEADERBOARD */
+  .lb-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:16px 20px; margin-bottom:8px; display:flex; align-items:center; gap:14px; }
+  .lb-rank { font-family:'Black Han Sans',sans-serif; font-size:18px; color:rgba(255,255,255,0.3); width:28px; text-align:center; }
+  .lb-name { flex:1; font-weight:600; font-size:15px; }
+  .lb-pts { font-family:'Black Han Sans',sans-serif; font-size:22px; color:#00E676; }
+  .lb-pts span { font-family:'DM Sans',sans-serif; font-size:11px; color:rgba(255,255,255,0.3); font-weight:400; }
+
+  /* USERS */
+  .user-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:16px 20px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
+  .user-email { font-size:14px; color:rgba(255,255,255,0.7); }
+  .user-status { font-size:11px; font-weight:700; padding:3px 8px; border-radius:100px; }
+  .status-ok { background:rgba(0,230,118,0.15); color:#00E676; }
+
+  .loading { text-align:center; color:rgba(255,255,255,0.3); padding:40px; }
+  .empty { text-align:center; color:rgba(255,255,255,0.2); padding:40px; font-size:14px; }
+  .toast { position:fixed; top:20px; right:20px; background:#00E676; color:#000; font-weight:700; font-size:14px; padding:12px 20px; border-radius:12px; z-index:999; animation:slideIn 0.3s ease; }
+  @keyframes slideIn { from{transform:translateY(-20px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+  .jornada-header { font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.3); margin:20px 0 10px; }
+  .stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:28px; }
+  .stat-box { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:16px; text-align:center; }
+  .stat-num { font-family:'Black Han Sans',sans-serif; font-size:28px; color:#00E676; }
+  .stat-label { font-size:11px; color:rgba(255,255,255,0.3); margin-top:4px; text-transform:uppercase; letter-spacing:1px; }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+  <div class="loading">Cargando...</div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://mktthenyladkhtptregx.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Gj1rbCjl47I2Ienb6SKn-w_KeZs4zgL';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const ADMIN_EMAIL = 'admin@pickbros.com';
+
+// ── POINT SYSTEM ──
+const POINTS = {
+  correct_winner: 1,
+  exact_score: 3,
+  champion: 15,
+  runner_up: 10,
+  third_place: 5,
+  top_scorer: 8
+};
+
+// ── MATCHES DATA ──
+const MATCHES = [
+  {id:1,  jornada:1,group:'A',home:'MEX',away:'RSA',homeName:'Mexico',awayName:'Sudafrica',homeFlag:'🇲🇽',awayFlag:'🇿🇦',date:'11 Jun · 13:00'},
+  {id:2,  jornada:1,group:'A',home:'KOR',away:'CZE',homeName:'Corea del Sur',awayName:'Chequia',homeFlag:'🇰🇷',awayFlag:'🇨🇿',date:'11 Jun · 20:00'},
+  {id:3,  jornada:2,group:'A',home:'CZE',away:'RSA',homeName:'Chequia',awayName:'Sudafrica',homeFlag:'🇨🇿',awayFlag:'🇿🇦',date:'18 Jun · 10:00'},
+  {id:4,  jornada:2,group:'A',home:'MEX',away:'KOR',homeName:'Mexico',awayName:'Corea del Sur',homeFlag:'🇲🇽',awayFlag:'🇰🇷',date:'18 Jun · 19:00'},
+  {id:5,  jornada:3,group:'A',home:'CZE',away:'MEX',homeName:'Chequia',awayName:'Mexico',homeFlag:'🇨🇿',awayFlag:'🇲🇽',date:'24 Jun · 19:00'},
+  {id:6,  jornada:3,group:'A',home:'RSA',away:'KOR',homeName:'Sudafrica',awayName:'Corea del Sur',homeFlag:'🇿🇦',awayFlag:'🇰🇷',date:'24 Jun · 19:00'},
+  {id:7,  jornada:1,group:'B',home:'CAN',away:'BIH',homeName:'Canada',awayName:'Bosnia y Herz.',homeFlag:'🇨🇦',awayFlag:'🇧🇦',date:'12 Jun · 13:00'},
+  {id:8,  jornada:1,group:'B',home:'QAT',away:'SUI',homeName:'Qatar',awayName:'Suiza',homeFlag:'🇶🇦',awayFlag:'🇨🇭',date:'13 Jun · 13:00'},
+  {id:9,  jornada:2,group:'B',home:'SUI',away:'BIH',homeName:'Suiza',awayName:'Bosnia y Herz.',homeFlag:'🇨🇭',awayFlag:'🇧🇦',date:'18 Jun · 13:00'},
+  {id:10, jornada:2,group:'B',home:'CAN',away:'QAT',homeName:'Canada',awayName:'Qatar',homeFlag:'🇨🇦',awayFlag:'🇶🇦',date:'18 Jun · 16:00'},
+  {id:11, jornada:3,group:'B',home:'SUI',away:'CAN',homeName:'Suiza',awayName:'Canada',homeFlag:'🇨🇭',awayFlag:'🇨🇦',date:'24 Jun · 13:00'},
+  {id:12, jornada:3,group:'B',home:'BIH',away:'QAT',homeName:'Bosnia y Herz.',awayName:'Qatar',homeFlag:'🇧🇦',awayFlag:'🇶🇦',date:'24 Jun · 13:00'},
+  {id:13, jornada:1,group:'C',home:'BRA',away:'MAR',homeName:'Brasil',awayName:'Marruecos',homeFlag:'🇧🇷',awayFlag:'🇲🇦',date:'13 Jun · 16:00'},
+  {id:14, jornada:1,group:'C',home:'HAI',away:'SCO',homeName:'Haiti',awayName:'Escocia',homeFlag:'🇭🇹',awayFlag:'🏴󠁧󠁢󠁳󠁣󠁴󠁿',date:'13 Jun · 19:00'},
+  {id:15, jornada:2,group:'C',home:'SCO',away:'MAR',homeName:'Escocia',awayName:'Marruecos',homeFlag:'🏴󠁧󠁢󠁳󠁣󠁴󠁿',awayFlag:'🇲🇦',date:'19 Jun · 16:00'},
+  {id:16, jornada:2,group:'C',home:'BRA',away:'HAI',homeName:'Brasil',awayName:'Haiti',homeFlag:'🇧🇷',awayFlag:'🇭🇹',date:'19 Jun · 19:00'},
+  {id:17, jornada:3,group:'C',home:'SCO',away:'BRA',homeName:'Escocia',awayName:'Brasil',homeFlag:'🏴󠁧󠁢󠁳󠁣󠁴󠁿',awayFlag:'🇧🇷',date:'24 Jun · 16:00'},
+  {id:18, jornada:3,group:'C',home:'MAR',away:'HAI',homeName:'Marruecos',awayName:'Haiti',homeFlag:'🇲🇦',awayFlag:'🇭🇹',date:'24 Jun · 16:00'},
+  {id:19, jornada:1,group:'D',home:'USA',away:'PAR',homeName:'Estados Unidos',awayName:'Paraguay',homeFlag:'🇺🇸',awayFlag:'🇵🇾',date:'12 Jun · 19:00'},
+  {id:20, jornada:1,group:'D',home:'AUS',away:'TUR',homeName:'Australia',awayName:'Turkiye',homeFlag:'🇦🇺',awayFlag:'🇹🇷',date:'12 Jun · 22:00'},
+  {id:21, jornada:2,group:'D',home:'TUR',away:'PAR',homeName:'Turkiye',awayName:'Paraguay',homeFlag:'🇹🇷',awayFlag:'🇵🇾',date:'18 Jun · 22:00'},
+  {id:22, jornada:2,group:'D',home:'USA',away:'AUS',homeName:'Estados Unidos',awayName:'Australia',homeFlag:'🇺🇸',awayFlag:'🇦🇺',date:'19 Jun · 13:00'},
+  {id:23, jornada:3,group:'D',home:'TUR',away:'USA',homeName:'Turkiye',awayName:'Estados Unidos',homeFlag:'🇹🇷',awayFlag:'🇺🇸',date:'25 Jun · 20:00'},
+  {id:24, jornada:3,group:'D',home:'PAR',away:'AUS',homeName:'Paraguay',awayName:'Australia',homeFlag:'🇵🇾',awayFlag:'🇦🇺',date:'25 Jun · 20:00'},
+  {id:25, jornada:1,group:'E',home:'GER',away:'CUW',homeName:'Alemania',awayName:'Curazao',homeFlag:'🇩🇪',awayFlag:'🇨🇼',date:'14 Jun · 11:00'},
+  {id:26, jornada:1,group:'E',home:'CIV',away:'ECU',homeName:'Costa de Marfil',awayName:'Ecuador',homeFlag:'🇨🇮',awayFlag:'🇪🇨',date:'14 Jun · 17:00'},
+  {id:27, jornada:2,group:'E',home:'GER',away:'CIV',homeName:'Alemania',awayName:'Costa de Marfil',homeFlag:'🇩🇪',awayFlag:'🇨🇮',date:'20 Jun · 14:00'},
+  {id:28, jornada:2,group:'E',home:'ECU',away:'CUW',homeName:'Ecuador',awayName:'Curazao',homeFlag:'🇪🇨',awayFlag:'🇨🇼',date:'20 Jun · 18:00'},
+  {id:29, jornada:3,group:'E',home:'ECU',away:'GER',homeName:'Ecuador',awayName:'Alemania',homeFlag:'🇪🇨',awayFlag:'🇩🇪',date:'25 Jun · 14:00'},
+  {id:30, jornada:3,group:'E',home:'CUW',away:'CIV',homeName:'Curazao',awayName:'Costa de Marfil',homeFlag:'🇨🇼',awayFlag:'🇨🇮',date:'25 Jun · 14:00'},
+  {id:31, jornada:1,group:'F',home:'NED',away:'JPN',homeName:'Paises Bajos',awayName:'Japon',homeFlag:'🇳🇱',awayFlag:'🇯🇵',date:'14 Jun · 14:00'},
+  {id:32, jornada:1,group:'F',home:'SWE',away:'TUN',homeName:'Suecia',awayName:'Tunez',homeFlag:'🇸🇪',awayFlag:'🇹🇳',date:'14 Jun · 20:00'},
+  {id:33, jornada:2,group:'F',home:'NED',away:'SWE',homeName:'Paises Bajos',awayName:'Suecia',homeFlag:'🇳🇱',awayFlag:'🇸🇪',date:'20 Jun · 11:00'},
+  {id:34, jornada:2,group:'F',home:'TUN',away:'JPN',homeName:'Tunez',awayName:'Japon',homeFlag:'🇹🇳',awayFlag:'🇯🇵',date:'19 Jun · 22:00'},
+  {id:35, jornada:3,group:'F',home:'JPN',away:'SWE',homeName:'Japon',awayName:'Suecia',homeFlag:'🇯🇵',awayFlag:'🇸🇪',date:'25 Jun · 17:00'},
+  {id:36, jornada:3,group:'F',home:'TUN',away:'NED',homeName:'Tunez',awayName:'Paises Bajos',homeFlag:'🇹🇳',awayFlag:'🇳🇱',date:'25 Jun · 17:00'},
+  {id:37, jornada:1,group:'G',home:'BEL',away:'EGY',homeName:'Belgica',awayName:'Egipto',homeFlag:'🇧🇪',awayFlag:'🇪🇬',date:'15 Jun · 13:00'},
+  {id:38, jornada:1,group:'G',home:'IRN',away:'NZL',homeName:'Iran',awayName:'Nueva Zelanda',homeFlag:'🇮🇷',awayFlag:'🇳🇿',date:'15 Jun · 19:00'},
+  {id:39, jornada:2,group:'G',home:'BEL',away:'IRN',homeName:'Belgica',awayName:'Iran',homeFlag:'🇧🇪',awayFlag:'🇮🇷',date:'21 Jun · 13:00'},
+  {id:40, jornada:2,group:'G',home:'NZL',away:'EGY',homeName:'Nueva Zelanda',awayName:'Egipto',homeFlag:'🇳🇿',awayFlag:'🇪🇬',date:'21 Jun · 19:00'},
+  {id:41, jornada:3,group:'G',home:'EGY',away:'IRN',homeName:'Egipto',awayName:'Iran',homeFlag:'🇪🇬',awayFlag:'🇮🇷',date:'26 Jun · 21:00'},
+  {id:42, jornada:3,group:'G',home:'NZL',away:'BEL',homeName:'Nueva Zelanda',awayName:'Belgica',homeFlag:'🇳🇿',awayFlag:'🇧🇪',date:'26 Jun · 21:00'},
+  {id:43, jornada:1,group:'H',home:'ESP',away:'CPV',homeName:'Espana',awayName:'Cabo Verde',homeFlag:'🇪🇸',awayFlag:'🇨🇻',date:'15 Jun · 10:00'},
+  {id:44, jornada:1,group:'H',home:'KSA',away:'URU',homeName:'Arabia Saudita',awayName:'Uruguay',homeFlag:'🇸🇦',awayFlag:'🇺🇾',date:'15 Jun · 16:00'},
+  {id:45, jornada:2,group:'H',home:'ESP',away:'KSA',homeName:'Espana',awayName:'Arabia Saudita',homeFlag:'🇪🇸',awayFlag:'🇸🇦',date:'21 Jun · 10:00'},
+  {id:46, jornada:2,group:'H',home:'URU',away:'CPV',homeName:'Uruguay',awayName:'Cabo Verde',homeFlag:'🇺🇾',awayFlag:'🇨🇻',date:'21 Jun · 16:00'},
+  {id:47, jornada:3,group:'H',home:'CPV',away:'KSA',homeName:'Cabo Verde',awayName:'Arabia Saudita',homeFlag:'🇨🇻',awayFlag:'🇸🇦',date:'26 Jun · 18:00'},
+  {id:48, jornada:3,group:'H',home:'URU',away:'ESP',homeName:'Uruguay',awayName:'Espana',homeFlag:'🇺🇾',awayFlag:'🇪🇸',date:'26 Jun · 18:00'},
+  {id:49, jornada:1,group:'I',home:'FRA',away:'SEN',homeName:'Francia',awayName:'Senegal',homeFlag:'🇫🇷',awayFlag:'🇸🇳',date:'16 Jun · 13:00'},
+  {id:50, jornada:1,group:'I',home:'IRQ',away:'NOR',homeName:'Irak',awayName:'Noruega',homeFlag:'🇮🇶',awayFlag:'🇳🇴',date:'16 Jun · 16:00'},
+  {id:51, jornada:2,group:'I',home:'FRA',away:'IRQ',homeName:'Francia',awayName:'Irak',homeFlag:'🇫🇷',awayFlag:'🇮🇶',date:'22 Jun · 15:00'},
+  {id:52, jornada:2,group:'I',home:'NOR',away:'SEN',homeName:'Noruega',awayName:'Senegal',homeFlag:'🇳🇴',awayFlag:'🇸🇳',date:'22 Jun · 18:00'},
+  {id:53, jornada:3,group:'I',home:'NOR',away:'FRA',homeName:'Noruega',awayName:'Francia',homeFlag:'🇳🇴',awayFlag:'🇫🇷',date:'26 Jun · 13:00'},
+  {id:54, jornada:3,group:'I',home:'SEN',away:'IRQ',homeName:'Senegal',awayName:'Irak',homeFlag:'🇸🇳',awayFlag:'🇮🇶',date:'26 Jun · 13:00'},
+  {id:55, jornada:1,group:'J',home:'ARG',away:'ALG',homeName:'Argentina',awayName:'Argelia',homeFlag:'🇦🇷',awayFlag:'🇩🇿',date:'16 Jun · 19:00'},
+  {id:56, jornada:1,group:'J',home:'AUT',away:'JOR',homeName:'Austria',awayName:'Jordania',homeFlag:'🇦🇹',awayFlag:'🇯🇴',date:'15 Jun · 22:00'},
+  {id:57, jornada:2,group:'J',home:'ARG',away:'AUT',homeName:'Argentina',awayName:'Austria',homeFlag:'🇦🇷',awayFlag:'🇦🇹',date:'22 Jun · 11:00'},
+  {id:58, jornada:2,group:'J',home:'JOR',away:'ALG',homeName:'Jordania',awayName:'Argelia',homeFlag:'🇯🇴',awayFlag:'🇩🇿',date:'22 Jun · 21:00'},
+  {id:59, jornada:3,group:'J',home:'ALG',away:'AUT',homeName:'Argelia',awayName:'Austria',homeFlag:'🇩🇿',awayFlag:'🇦🇹',date:'27 Jun · 20:00'},
+  {id:60, jornada:3,group:'J',home:'JOR',away:'ARG',homeName:'Jordania',awayName:'Argentina',homeFlag:'🇯🇴',awayFlag:'🇦🇷',date:'27 Jun · 20:00'},
+  {id:61, jornada:1,group:'K',home:'POR',away:'COD',homeName:'Portugal',awayName:'RD del Congo',homeFlag:'🇵🇹',awayFlag:'🇨🇩',date:'17 Jun · 11:00'},
+  {id:62, jornada:1,group:'K',home:'UZB',away:'COL',homeName:'Uzbekistan',awayName:'Colombia',homeFlag:'🇺🇿',awayFlag:'🇨🇴',date:'17 Jun · 20:00'},
+  {id:63, jornada:2,group:'K',home:'POR',away:'UZB',homeName:'Portugal',awayName:'Uzbekistan',homeFlag:'🇵🇹',awayFlag:'🇺🇿',date:'23 Jun · 11:00'},
+  {id:64, jornada:2,group:'K',home:'COD',away:'COL',homeName:'RD del Congo',awayName:'Colombia',homeFlag:'🇨🇩',awayFlag:'🇨🇴',date:'23 Jun · 20:00'},
+  {id:65, jornada:3,group:'K',home:'COL',away:'POR',homeName:'Colombia',awayName:'Portugal',homeFlag:'🇨🇴',awayFlag:'🇵🇹',date:'27 Jun · 17:30'},
+  {id:66, jornada:3,group:'K',home:'COD',away:'UZB',homeName:'RD del Congo',awayName:'Uzbekistan',homeFlag:'🇨🇩',awayFlag:'🇺🇿',date:'27 Jun · 17:30'},
+  {id:67, jornada:1,group:'L',home:'ENG',away:'CRO',homeName:'Inglaterra',awayName:'Croacia',homeFlag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',awayFlag:'🇭🇷',date:'17 Jun · 14:00'},
+  {id:68, jornada:1,group:'L',home:'GHA',away:'PAN',homeName:'Ghana',awayName:'Panama',homeFlag:'🇬🇭',awayFlag:'🇵🇦',date:'17 Jun · 17:00'},
+  {id:69, jornada:2,group:'L',home:'ENG',away:'GHA',homeName:'Inglaterra',awayName:'Ghana',homeFlag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',awayFlag:'🇬🇭',date:'23 Jun · 14:00'},
+  {id:70, jornada:2,group:'L',home:'PAN',away:'CRO',homeName:'Panama',awayName:'Croacia',homeFlag:'🇵🇦',awayFlag:'🇭🇷',date:'23 Jun · 17:00'},
+  {id:71, jornada:3,group:'L',home:'PAN',away:'ENG',homeName:'Panama',awayName:'Inglaterra',homeFlag:'🇵🇦',awayFlag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',date:'27 Jun · 15:00'},
+  {id:72, jornada:3,group:'L',home:'CRO',away:'GHA',homeName:'Croacia',awayName:'Ghana',homeFlag:'🇭🇷',awayFlag:'🇬🇭',date:'27 Jun · 15:00'},
+];
+
+// ── STATE ──
+let currentUser = null;
+let results = {};
+let leaderboard = [];
+let users = [];
+let activeTab = 'matches';
+let activeJornada = 1;
+
+// ── INIT ──
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session && session.user.email === ADMIN_EMAIL) {
+    currentUser = session.user;
+    await loadData();
+    renderMain();
+  } else {
+    renderLogin();
+  }
+}
+
+async function loadData() {
+  const [resRes, lbRes, elimRes] = await Promise.all([
+    sb.from('match_results').select('*'),
+    sb.from('leaderboard').select('*').order('total_points', { ascending: false }),
+    sb.from('elimination_matches').select('*').order('id')
+  ]);
+  
+  if (resRes.data) {
+    results = {};
+    resRes.data.forEach(r => { results[r.match_id] = { home: r.home_score, away: r.away_score }; });
+  }
+  if (lbRes.data) leaderboard = lbRes.data;
+  if (elimRes.data) elimMatches = elimRes.data;
+}
+
+// ── CALCULATE POINTS ──
+function calcPoints(predHome, predAway, realHome, realAway) {
+  const ph = parseInt(predHome), pa = parseInt(predAway);
+  const rh = parseInt(realHome), ra = parseInt(realAway);
+  if (ph === rh && pa === ra) return POINTS.exact_score;
+  const realWinner = rh > ra ? 'home' : ra > rh ? 'away' : 'draw';
+  const predWinner = ph > pa ? 'home' : pa > ph ? 'away' : 'draw';
+  if (realWinner === predWinner) return POINTS.correct_winner;
+  return 0;
+}
+
+async function recalcAllPoints(matchId, homeScore, awayScore) {
+  const { data: preds } = await sb.from('match_predictions')
+    .select('*').eq('match_id', matchId);
+  
+  if (!preds || preds.length === 0) return 0;
+
+  // Get previous result if exists (to subtract old points)
+  const prevResult = results[matchId];
+
+  let updated = 0;
+  for (const pred of preds) {
+    const predHome = parseInt(pred.home_score);
+    const predAway = parseInt(pred.away_score);
+
+    // Points for new result
+    const newPts = calcPoints(predHome, predAway, homeScore, awayScore);
+    
+    // Points from old result (to subtract)
+    const oldPts = prevResult ? calcPoints(predHome, predAway, prevResult.home, prevResult.away) : 0;
+    
+    const diff = newPts - oldPts;
+
+    // Get or create leaderboard entry
+    const { data: existing } = await sb.from('leaderboard')
+      .select('*').eq('user_id', pred.user_id).maybeSingle();
+
+    if (existing) {
+      const newTotal = Math.max(0, existing.total_points + diff);
+      const exactDiff = (newPts === POINTS.exact_score ? 1 : 0) - (oldPts === POINTS.exact_score ? 1 : 0);
+      await sb.from('leaderboard').update({
+        total_points: newTotal,
+        correct_scores: Math.max(0, existing.correct_scores + exactDiff),
+        updated_at: new Date().toISOString()
+      }).eq('user_id', pred.user_id);
+    } else if (newPts > 0) {
+      await sb.from('leaderboard').insert({
+        user_id: pred.user_id,
+        display_name: pred.user_id,
+        total_points: newPts,
+        correct_scores: newPts === POINTS.exact_score ? 1 : 0,
+        updated_at: new Date().toISOString()
+      });
+    }
+    if (diff !== 0) updated++;
+  }
+  return updated;
+}
+
+// ── SAVE RESULT ──
+async function saveResult(matchId, homeScore, awayScore) {
+  // Check if result already exists - warn user
+  const existing = results[matchId];
+  if (existing) {
+    if (!confirm(`Este partido ya tiene resultado (${existing.home}-${existing.away}). ¿Deseas actualizarlo? Nota: los puntos anteriores no se reversan automaticamente.`)) return;
+  }
+
+  const { error } = await sb.from('match_results').upsert({
+    match_id: matchId,
+    home_score: homeScore,
+    away_score: awayScore,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'match_id' });
+
+  if (error) { showToast('❌ Error: ' + error.message); return; }
+
+  const updated = await recalcAllPoints(matchId, homeScore, awayScore);
+  results[matchId] = { home: homeScore, away: awayScore };
+  await loadData();
+  showToast(`✅ ${MATCHES.find(m=>m.id===matchId)?.homeName} ${homeScore}-${awayScore} ${MATCHES.find(m=>m.id===matchId)?.awayName} · ${updated} usuarios actualizados`);
+  renderMain();
+}
+
+// ── TOAST ──
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ── LOGIN ──
+async function doLogin() {
+  const email = document.getElementById('email').value.trim();
+  const pass = document.getElementById('pass').value.trim();
+  const err = document.getElementById('err');
+  
+  if (!email || !pass) { err.textContent = 'Completa todos los campos'; return; }
+  
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error || data.user.email !== ADMIN_EMAIL) {
+    err.textContent = 'Acceso denegado';
+    await sb.auth.signOut();
+    return;
+  }
+  currentUser = data.user;
+  await loadData();
+  renderMain();
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  currentUser = null;
+  renderLogin();
+}
+
+// ── RENDER LOGIN ──
+function renderLogin() {
+  document.getElementById('app').innerHTML = `
+    <div style="text-align:center;margin-bottom:8px">
+      <div class="logo" style="justify-content:center">
+        <span>PICK</span><span>BROS</span>
+        <span class="admin-badge">ADMIN</span>
+      </div>
+    </div>
+    <div class="login-card">
+      <h2>Panel de Control</h2>
+      <p>Solo administradores autorizados</p>
+      <div id="err" class="err"></div>
+      <input id="email" type="email" placeholder="Correo admin" value="admin@pickbros.com"/>
+      <input id="pass" type="password" placeholder="Contrasena" onkeydown="if(event.key==='Enter')doLogin()"/>
+      <button class="btn" onclick="doLogin()">Entrar</button>
+    </div>
+  `;
+}
+
+// ── RENDER MAIN ──
+function renderMain() {
+  const totalResults = Object.keys(results).length;
+  const totalMatches = MATCHES.length;
+  const topPlayer = leaderboard[0];
+
+  const jornadas = [1,2,3];
+  const jornadaMatches = MATCHES.filter(m => m.jornada === activeJornada);
+  const resultados = Object.keys(results).length;
+
+  document.getElementById('app').innerHTML = `
+    <div class="header">
+      <div class="logo">
+        <span>PICK</span><span>BROS</span>
+        <span class="admin-badge">ADMIN</span>
+      </div>
+      <button class="btn secondary" style="width:auto;padding:8px 16px;font-size:13px" onclick="doLogout()">Cerrar sesion</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-num">${totalResults}</div>
+        <div class="stat-label">Resultados</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">${totalMatches - totalResults}</div>
+        <div class="stat-label">Pendientes</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">${leaderboard.length}</div>
+        <div class="stat-label">Jugadores</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab ${activeTab==='matches'?'active':''}" onclick="switchTab('matches')">⚽ Grupos</button>
+      <button class="tab ${activeTab==='elimination'?'active':''}" onclick="switchTab('elimination')">🏆 Eliminatorias</button>
+      <button class="tab ${activeTab==='leaderboard'?'active':''}" onclick="switchTab('leaderboard')">📊 Tabla</button>
+    </div>
+
+    <div id="tab-content">
+      ${activeTab === 'matches' ? renderMatchesTab(jornadaMatches) : activeTab === 'elimination' ? renderEliminationTab() : renderLeaderboardTab()}
+    </div>
+  `;
+}
+
+function renderMatchesTab(jornadaMatches) {
+  const jornadaBtns = [1,2,3].map(j => 
+    `<button class="tab ${activeJornada===j?'active':''}" onclick="switchJornada(${j})" style="font-size:12px;padding:6px 14px">Jornada ${j}</button>`
+  ).join('');
+
+  const cards = jornadaMatches.map(m => {
+    const res = results[m.id];
+    const hasResult = res !== undefined;
+    return `
+      <div class="match-card ${hasResult?'has-result':''}">
+        <div class="match-meta">Grupo ${m.group} · ${m.date}</div>
+        <div class="match-teams">
+          <div class="team">
+            <span class="team-flag">${m.homeFlag}</span>
+            <span class="team-name">${m.homeName}</span>
+          </div>
+          <div class="score-area">
+            <input class="score-input" id="h${m.id}" type="number" min="0" max="20" value="${hasResult ? res.home : ''}" placeholder="0"/>
+            <span class="score-sep">—</span>
+            <input class="score-input" id="a${m.id}" type="number" min="0" max="20" value="${hasResult ? res.away : ''}" placeholder="0"/>
+          </div>
+          <div class="team">
+            <span class="team-flag">${m.awayFlag}</span>
+            <span class="team-name">${m.awayName}</span>
+          </div>
+        </div>
+        ${hasResult ? `<div class="result-badge">✅ Guardado: ${res.home} — ${res.away}</div>` : ''}
+        <button class="confirm-btn" onclick="confirmResult(${m.id})">
+          ${hasResult ? '✏️ Actualizar resultado' : '✅ Confirmar resultado'}
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="section-title">Capturar Resultados</div>
+    <div class="tabs" style="margin-bottom:20px">${jornadaBtns}</div>
+    ${cards}
+  `;
+}
+
+function renderLeaderboardTab() {
+  if (leaderboard.length === 0) {
+    return `<div class="section-title">Tabla de Posiciones</div><div class="empty">No hay puntos registrados aun</div>`;
+  }
+  const medals = ['🥇','🥈','🥉'];
+  const cards = leaderboard.map((p, i) => `
+    <div class="lb-card">
+      <div class="lb-rank">${medals[i] || (i+1)}</div>
+      <div class="lb-name">${p.display_name || p.user_id.substring(0,8)}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-right:12px">${p.correct_scores} exactos</div>
+      <div class="lb-pts">${p.total_points} <span>pts</span></div>
+    </div>
+  `).join('');
+  return `<div class="section-title">Tabla de Posiciones</div>${cards}`;
+}
+
+let elimMatches = [];
+
+async function loadElimMatches() {
+  const { data } = await sb.from('elimination_matches').select('*').order('id');
+  elimMatches = data || [];
+}
+
+function renderEliminationTab() {
+  const rounds = ['16avos','8vos','Cuartos','Semis','3er Lugar','Final'];
+  
+  const sections = rounds.map(round => {
+    const matches = elimMatches.filter(m => m.round === round);
+    const cards = matches.map(m => {
+      const hasTeams = m.home_team !== 'Por definir' && m.away_team !== 'Por definir';
+      const hasResult = m.home_score !== null && m.away_score !== null;
+      return `
+        <div class="match-card ${hasResult?'has-result':''}">
+          <div class="match-meta">${round} · ${m.match_date || 'Fecha por definir'}</div>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px;color:#fff;font-size:13px" 
+              id="ht${m.id}" placeholder="🏳️ Equipo Local" value="${m.home_flag||''} ${m.home_team||''}"/>
+            <span style="color:rgba(255,255,255,0.3);padding:8px">vs</span>
+            <input style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px;color:#fff;font-size:13px;text-align:right" 
+              id="at${m.id}" placeholder="Equipo Visitante 🏳️" value="${m.away_flag||''} ${m.away_team||''}"/>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px;color:#fff;font-size:13px" 
+              id="dt${m.id}" placeholder="📅 Ej: 2 Jul · 14:00" value="${m.match_date||''}"/>
+            <input style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px;color:#fff;font-size:13px" 
+              id="ku${m.id}" placeholder="⏰ UTC Ej: 2026-07-02T20:00Z" value="${m.kickoff_utc||''}"/>
+          </div>
+          ${hasTeams ? `
+          <div class="match-teams" style="margin-bottom:12px">
+            <div class="team"><span class="team-flag">${m.home_flag||'🏳️'}</span><span class="team-name">${m.home_team}</span></div>
+            <div class="score-area">
+              <input class="score-input" id="hs${m.id}" type="number" min="0" value="${hasResult?m.home_score:''}" placeholder="0"/>
+              <span class="score-sep">—</span>
+              <input class="score-input" id="as${m.id}" type="number" min="0" value="${hasResult?m.away_score:''}" placeholder="0"/>
+            </div>
+            <div class="team"><span class="team-flag">${m.away_flag||'🏳️'}</span><span class="team-name">${m.away_team}</span></div>
+          </div>
+          ` : ''}
+          ${hasResult ? `<div class="result-badge">✅ Resultado: ${m.home_score} — ${m.away_score}</div>` : ''}
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="confirm-btn" style="flex:1" onclick="saveElimTeams(${m.id})">💾 Guardar equipos y fecha</button>
+            ${hasTeams ? `<button class="confirm-btn" style="flex:0.6;background:rgba(0,230,118,0.2);color:#00E676" onclick="saveElimResult(${m.id})">✅ Resultado</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `<div class="jornada-header">${round}</div>${cards}`;
+  }).join('');
+
+  return `<div class="section-title">Partidos de Eliminatorias</div>${sections}`;
+}
+
+async function saveElimTeams(matchId) {
+  const homeRaw = document.getElementById('ht'+matchId).value.trim();
+  const awayRaw = document.getElementById('at'+matchId).value.trim();
+  const date = document.getElementById('dt'+matchId).value.trim();
+  const kickoff = document.getElementById('ku'+matchId).value.trim();
+
+  // Extract flag and name
+  const parseTeam = (raw) => {
+    const parts = raw.split(' ');
+    const flag = parts[0];
+    const name = parts.slice(1).join(' ') || raw;
+    return { flag, name };
+  };
+
+  const home = parseTeam(homeRaw);
+  const away = parseTeam(awayRaw);
+
+  const { error } = await sb.from('elimination_matches').update({
+    home_team: home.name,
+    home_flag: home.flag,
+    away_team: away.name,
+    away_flag: away.flag,
+    match_date: date || 'Por definir',
+    kickoff_utc: kickoff || null,
+    updated_at: new Date().toISOString()
+  }).eq('id', matchId);
+
+  if (error) { showToast('❌ Error: ' + error.message); return; }
+  await loadElimMatches();
+  showToast('✅ Partido actualizado');
+  renderMain();
+}
+
+async function saveElimResult(matchId) {
+  const h = parseInt(document.getElementById('hs'+matchId)?.value);
+  const a = parseInt(document.getElementById('as'+matchId)?.value);
+  if (isNaN(h) || isNaN(a)) { showToast('⚠️ Ingresa el marcador'); return; }
+
+  const { error } = await sb.from('elimination_matches').update({
+    home_score: h,
+    away_score: a,
+    updated_at: new Date().toISOString()
+  }).eq('id', matchId);
+
+  if (error) { showToast('❌ Error: ' + error.message); return; }
+
+  // Calculate points for elimination match
+  await recalcAllPoints(matchId, h, a);
+  await loadElimMatches();
+  showToast('✅ Resultado guardado');
+  renderMain();
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  renderMain();
+}
+
+function switchJornada(j) {
+  activeJornada = j;
+  renderMain();
+}
+
+async function confirmResult(matchId) {
+  const h = parseInt(document.getElementById('h'+matchId).value);
+  const a = parseInt(document.getElementById('a'+matchId).value);
+  if (isNaN(h) || isNaN(a)) { showToast('⚠️ Ingresa el marcador completo'); return; }
+  await saveResult(matchId, h, a);
+}
+
+init();
+</script>
+</body>
+</html>
