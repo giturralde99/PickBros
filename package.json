@@ -1,0 +1,13 @@
+{
+  "name": "pickbros",
+  "version": "1.0.0",
+  "description": "PickBros - Copa del Mundo 2026",
+  "private": true,
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  },
+  "dependencies": {
+    "@vercel/speed-insights": "^1.0.12"
+  }
+}
