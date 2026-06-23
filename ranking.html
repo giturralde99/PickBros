@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="apple-touch-icon" href="favicon.png">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>PickBros · Ranking</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#060a0a; color:#fff; font-family:'DM Sans',sans-serif; min-height:100vh; padding:20px; max-width:430px; margin:0 auto; overflow-x:hidden; }
+body::before { content:''; position:fixed; top:-20%; left:-10%; width:80%; height:80%; background:radial-gradient(ellipse,rgba(0,230,118,0.10) 0%,transparent 70%); pointer-events:none; z-index:0; }
+.wrap { position:relative; z-index:1; }
+
+.header { text-align:center; margin-bottom:24px; }
+.logo { font-family:'Black Han Sans',sans-serif; font-size:24px; }
+.logo span { color:#00E676; }
+.subtitle { font-size:12px; color:rgba(255,255,255,0.3); margin-top:4px; }
+
+.btn { width:100%; background:#00E676; border:none; border-radius:12px; padding:13px; color:#000; font-family:'DM Sans',sans-serif; font-weight:800; font-size:15px; cursor:pointer; margin-bottom:20px; }
+
+.section-label { font-size:10px; color:rgba(255,255,255,0.3); letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
+
+.card { background:#0d1410; border-radius:20px; padding:20px; }
+.card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.card-logo { font-family:'Black Han Sans',sans-serif; font-size:18px; }
+.card-logo span { color:#00E676; }
+
+.row { display:flex; align-items:center; gap:12px; border-radius:12px; padding:10px 14px; margin-bottom:6px; }
+.row.gold { background:rgba(255,200,0,0.08); border:0.5px solid rgba(255,200,0,0.25); }
+.row.silver { background:rgba(255,255,255,0.05); border:0.5px solid rgba(255,255,255,0.12); }
+.row.bronze { background:rgba(255,140,0,0.06); border:0.5px solid rgba(255,140,0,0.2); }
+.row.normal { background:rgba(255,255,255,0.03); border:0.5px solid rgba(255,255,255,0.07); }
+
+.pos { font-size:13px; font-weight:800; width:24px; text-align:center; flex-shrink:0; }
+.row.gold .pos { color:#FFC800; }
+.row.silver .pos { color:rgba(255,255,255,0.6); }
+.row.bronze .pos { color:#FF8C00; }
+.row.normal .pos { color:rgba(255,255,255,0.3); }
+
+.avatar { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; }
+.row.gold .avatar { background:rgba(255,200,0,0.2); color:#FFC800; }
+.row.silver .avatar { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.6); }
+.row.bronze .avatar { background:rgba(255,140,0,0.15); color:#FF8C00; }
+.row.normal .avatar { background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.3); }
+
+.name { font-size:14px; font-weight:700; color:#fff; flex:1; }
+.count { font-size:15px; font-weight:800; }
+.row.gold .count { color:#FFC800; }
+.row.silver .count { color:rgba(255,255,255,0.7); }
+.row.bronze .count { color:#FF8C00; }
+.row.normal .count { color:rgba(255,255,255,0.5); }
+.count-label { font-size:9px; color:rgba(255,255,255,0.2); font-weight:500; }
+
+.card-footer { border-top:0.5px solid rgba(255,255,255,0.07); padding-top:12px; margin-top:14px; display:flex; justify-content:space-between; align-items:center; }
+.footer-url { font-size:10px; color:rgba(255,255,255,0.2); }
+.footer-label { font-size:10px; color:rgba(255,255,255,0.2); }
+
+.msg { text-align:center; padding:30px; color:rgba(255,255,255,0.3); font-size:14px; }
+.hint { text-align:center; font-size:12px; color:rgba(255,255,255,0.2); margin-top:16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="logo">PICK<span>BROS</span></div>
+    <div class="subtitle">Ranking de aciertos</div>
+  </div>
+
+  <button class="btn" onclick="loadRanking()">⚽ Generar ranking</button>
+
+  <div id="content"></div>
+  <div class="hint" id="hint" style="display:none">📸 Toma screenshot para compartir al grupo</div>
+</div>
+
+<script>
+const SB_URL = 'https://mktthenyladkhtptregx.supabase.co';
+const SB_KEY = 'sb_publishable_Gj1rbCjl47I2Ienb6SKn-w_KeZs4zgL';
+const sb = window.supabase.createClient(SB_URL, SB_KEY);
+
+async function loadRanking() {
+  document.getElementById('content').innerHTML = '<div class="msg">Calculando ranking...</div>';
+  document.getElementById('hint').style.display = 'none';
+
+  try {
+    // Login silencioso
+    const { data: session } = await sb.auth.getSession();
+    if (!session?.session) {
+      await sb.auth.signInWithPassword({ email: 'admin@pickbros.com', password: 'Admin2026' });
+    }
+
+    const [resRes, predRes1, predRes2, lbRes] = await Promise.all([
+      sb.from('match_results').select('match_id,home_score,away_score'),
+      sb.from('match_predictions').select('user_id,match_id,home_score,away_score').range(0,999),
+      sb.from('match_predictions').select('user_id,match_id,home_score,away_score').range(1000,1999),
+      sb.from('leaderboard').select('user_id,display_name')
+    ]);
+
+    const results = {};
+    (resRes.data||[]).forEach(r => { results[r.match_id] = r; });
+
+    const allPreds = [...(predRes1.data||[]), ...(predRes2.data||[])];
+
+    const nameMap = {};
+    (lbRes.data||[]).forEach(u => { nameMap[u.user_id] = u.display_name; });
+
+    // Count correct winners per user
+    const counts = {};
+    allPreds.forEach(p => {
+      const r = results[p.match_id];
+      if (!r) return;
+      const rw = r.home_score > r.away_score ? 1 : r.away_score > r.home_score ? -1 : 0;
+      const pw = p.home_score > p.away_score ? 1 : p.away_score > p.home_score ? -1 : 0;
+      if (rw === pw) {
+        counts[p.user_id] = (counts[p.user_id] || 0) + 1;
+      }
+    });
+
+    // Build sorted list
+    const ranked = Object.entries(counts)
+      .map(([uid, count]) => ({ name: nameMap[uid] || uid.substring(0,8), count }))
+      .sort((a, b) => b.count - a.count);
+
+    const totalPlayed = Object.keys(results).length;
+
+    const rowHtml = ranked.map((r, i) => {
+      const cls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : 'normal';
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+      const initial = r.name.charAt(0).toUpperCase();
+      const pct = totalPlayed > 0 ? Math.round(r.count / totalPlayed * 100) : 0;
+      return `
+        <div class="row ${cls}">
+          <div class="pos">${medal}</div>
+          <div class="avatar">${initial}</div>
+          <div class="name">${r.name}</div>
+          <div style="text-align:right">
+            <div class="count">${r.count}</div>
+            <div class="count-label">${pct}% · ${totalPlayed} jugados</div>
+          </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('content').innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <div class="card-logo">PICK<span>BROS</span></div>
+          <span style="font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:1px;text-transform:uppercase">Copa del Mundo 2026</span>
+        </div>
+        <div class="section-label">⚽ Partidos atinados (ganador o empate)</div>
+        ${rowHtml}
+        <div class="card-footer">
+          <span class="footer-url">pickbros.mx</span>
+          <span class="footer-label">${totalPlayed} partidos jugados</span>
+        </div>
+      </div>`;
+
+    document.getElementById('hint').style.display = 'block';
+
+  } catch(e) {
+    document.getElementById('content').innerHTML = `<div class="msg">Error: ${e.message}</div>`;
+  }
+}
+</script>
+</body>
+</html>
