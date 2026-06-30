@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PickBros · Bracket</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=DM+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { width:100%; background:#080c09; font-family:'DM Sans',sans-serif; overflow-x:hidden; }
+#wrap { display:flex; flex-direction:column; align-items:center; padding:14px 0 30px; }
+.top-bar { width:100%; max-width:480px; display:flex; align-items:center; justify-content:space-between; padding:0 18px 10px; }
+.logo { font-family:'Black Han Sans',sans-serif; font-size:18px; color:#fff; }
+.logo span { color:#00E676; }
+.round-label { font-size:10px; color:rgba(255,255,255,0.35); letter-spacing:1.5px; text-transform:uppercase; }
+
+#stage { position:relative; }
+svg { position:absolute; top:0; left:0; }
+
+.team-node { position:absolute; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; cursor:pointer; }
+.flag-circle { border-radius:50%; display:flex; align-items:center; justify-content:center; transition:transform .1s; }
+.flag-circle:active { transform:scale(0.92); }
+.flag-circle .emoji { display:block; line-height:1; }
+.team-label { font-weight:800; letter-spacing:0.3px; white-space:nowrap; }
+
+.state-winner .flag-circle { background:rgba(0,230,118,0.22); border:2px solid #00E676; box-shadow:0 0 10px rgba(0,230,118,0.25); }
+.state-winner .team-label { color:#00E676; }
+.state-loser .flag-circle { background:rgba(0,0,0,0.65); border:1px solid rgba(255,255,255,0.07); }
+.state-loser .flag-circle .emoji { opacity:0.25; }
+.state-loser .team-label { color:rgba(255,255,255,0.18); }
+.state-draw .flag-circle { background:rgba(255,200,0,0.15); border:2px solid rgba(255,200,0,0.6); }
+.state-draw .team-label { color:#FFC800; }
+.state-pending .flag-circle { background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.22); }
+.state-pending .team-label { color:rgba(255,255,255,0.65); }
+.state-empty .flag-circle { background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.06); }
+.tbd-mark { color:rgba(255,255,255,0.18); }
+
+.trophy-center { position:absolute; transform:translate(-50%,-50%); border-radius:50%; background:rgba(0,230,118,0.12); border:1.5px solid rgba(0,230,118,0.5); display:flex; align-items:center; justify-content:center; }
+
+/* MODAL */
+#overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:200; padding:20px; }
+#overlay.show { display:flex; }
+#modal { background:#0d1a12; border:1px solid rgba(0,230,118,0.2); border-radius:18px; padding:22px; max-width:320px; width:100%; text-align:center; animation:pop .15s ease; }
+@keyframes pop { from{transform:scale(0.9); opacity:0} to{transform:scale(1); opacity:1} }
+#modal-teams { font-size:16px; font-weight:800; color:#fff; margin-bottom:6px; }
+#modal-date { font-size:11px; color:rgba(255,255,255,0.4); margin-bottom:10px; }
+#modal-score { font-size:30px; font-weight:900; color:#00E676; letter-spacing:-1px; margin:8px 0; }
+#modal-winner { font-size:13px; color:rgba(255,255,255,0.6); font-weight:700; }
+#modal-close { margin-top:16px; background:rgba(255,255,255,0.08); border:none; border-radius:10px; padding:10px 24px; color:#fff; font-family:'DM Sans'; font-weight:700; font-size:13px; cursor:pointer; }
+
+#loading { color:rgba(255,255,255,0.4); font-size:13px; padding:60px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="top-bar">
+    <div class="logo">PICK<span>BROS</span></div>
+    <div class="round-label">16avos de Final</div>
+  </div>
+  <div id="loading">Cargando bracket...</div>
+  <div id="stage"></div>
+</div>
+
+<div id="overlay" onclick="if(event.target===this) closeModal()">
+  <div id="modal">
+    <div id="modal-teams"></div>
+    <div id="modal-date"></div>
+    <div id="modal-score"></div>
+    <div id="modal-winner"></div>
+    <button id="modal-close" onclick="closeModal()">Cerrar</button>
+  </div>
+</div>
+
+<script>
+const SB_URL = 'https://mktthenyladkhtptregx.supabase.co';
+const SB_KEY = 'sb_publishable_Gj1rbCjl47I2Ienb6SKn-w_KeZs4zgL';
+const sb = window.supabase.createClient(SB_URL, SB_KEY);
+
+const TOTAL = 32;
+let SIZE, cx, cy, R0, R1, R2, R3, RFIN, NODE_D;
+
+function ang(i,n){ return (i/n)*2*Math.PI - Math.PI/2; }
+function pt(r,a){ return { x: cx + r*Math.cos(a), y: cy + r*Math.sin(a) }; }
+function midAngle(a1,a2){
+  let d = a2-a1;
+  while(d>Math.PI) d-=2*Math.PI;
+  while(d<-Math.PI) d+=2*Math.PI;
+  return a1 + d/2;
+}
+
+const SHORT = {'Sudafrica':'RSA','Canada':'CAN','Brasil':'BRA','Japon':'JPN','Alemania':'GER','Paraguay':'PAR','Paises Bajos':'NED','Marruecos':'MAR','Costa de Marfil':'CIV','Noruega':'NOR','Francia':'FRA','Suecia':'SWE','Mexico':'MEX','Ecuador':'ECU','Inglaterra':'ENG','RD del Congo':'COD','Belgica':'BEL','Senegal':'SEN','Estados Unidos':'USA','Bosnia y Herz.':'BIH','Espana':'ESP','Austria':'AUT','Portugal':'POR','Croacia':'CRO','Suiza':'SUI','Argelia':'ALG','Australia':'AUS','Egipto':'EGY','Argentina':'ARG','Cabo Verde':'CPV','Colombia':'COL','Ghana':'GHA'};
+function shortName(n){ return SHORT[n] || (n||'').substring(0,3).toUpperCase(); }
+
+function setup(){
+  SIZE = Math.min(window.innerWidth - 24, 460);
+  cx = SIZE/2; cy = SIZE/2;
+  R0   = SIZE*0.42;
+  R1   = SIZE*0.32;
+  R2   = SIZE*0.225;
+  R3   = SIZE*0.14;
+  RFIN = SIZE*0.06;
+  NODE_D = SIZE*0.072; // diameter
+
+  const stage = document.getElementById('stage');
+  stage.style.width = SIZE+'px';
+  stage.style.height = SIZE+'px';
+}
+
+function svgLine(x1,y1,x2,y2,color,width){
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${width}" stroke-linecap="round"/>`;
+}
+function svgCircle(x,y,r,color){
+  return `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}"/>`;
+}
+function svgRing(r){
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(255,255,255,0.045)" stroke-width="0.5"/>`;
+}
+
+function makeNode(point, flag, name, state, isTeam){
+  const div = document.createElement('div');
+  div.className = 'team-node state-'+state;
+  div.style.left = point.x+'px';
+  div.style.top = point.y+'px';
+  const d = isTeam ? NODE_D : NODE_D*0.78;
+  const fcDiv = document.createElement('div');
+  fcDiv.className = 'flag-circle';
+  fcDiv.style.width = d+'px';
+  fcDiv.style.height = d+'px';
+  if(state==='empty'){
+    fcDiv.innerHTML = `<span class="tbd-mark" style="font-size:${d*0.45}px">?</span>`;
+  } else {
+    fcDiv.innerHTML = `<span class="emoji" style="font-size:${d*0.5}px">${flag}</span>`;
+  }
+  div.appendChild(fcDiv);
+  return div;
+}
+
+function render(matches){
+  const stage = document.getElementById('stage');
+  stage.innerHTML = '';
+
+  let svgContent = '';
+  [R0+NODE_D*0.75, R1, R2, R3].forEach(r => svgContent += svgRing(r));
+
+  const lines = [];
+
+  matches.forEach((m,i) => {
+    const aHome = ang(2*i, TOTAL);
+    const aAway = ang(2*i+1, TOTAL);
+    const aJunc = midAngle(aHome, aAway);
+
+    const hPt = pt(R0, aHome);
+    const aPt = pt(R0, aAway);
+    const jPt = pt(R1, aJunc);
+
+    const isPDef = !m.home_team || m.home_team === 'Por definir';
+    const hasResult = m.home_score !== null && m.away_score !== null;
+    const homeWins = hasResult && m.home_score > m.away_score;
+    const awayWins = hasResult && m.away_score > m.home_score;
+    const isDraw = hasResult && m.home_score === m.away_score;
+
+    if(!isPDef){
+      const winColor = 'rgba(0,230,118,0.45)';
+      const drawColor = 'rgba(255,200,0,0.4)';
+      const dimColor = 'rgba(255,255,255,0.04)';
+      const normColor = 'rgba(255,255,255,0.13)';
+
+      const hColor = isDraw ? drawColor : homeWins ? winColor : (hasResult ? dimColor : normColor);
+      const aColor = isDraw ? drawColor : awayWins ? winColor : (hasResult ? dimColor : normColor);
+      const hW = (homeWins||isDraw) ? 2 : 1;
+      const aW = (awayWins||isDraw) ? 2 : 1;
+
+      lines.push(svgLine(hPt.x,hPt.y,jPt.x,jPt.y,hColor,hW));
+      lines.push(svgLine(aPt.x,aPt.y,jPt.x,jPt.y,aColor,aW));
+      lines.push(svgCircle(jPt.x,jPt.y, hasResult?3.2:2, hasResult?'rgba(0,230,118,0.55)':'rgba(255,255,255,0.15)'));
+
+      const hState = !hasResult ? 'pending' : isDraw ? 'draw' : homeWins ? 'winner' : 'loser';
+      const aState = !hasResult ? 'pending' : isDraw ? 'draw' : awayWins ? 'winner' : 'loser';
+
+      const hNode = makeNode(hPt, m.home_flag||'🏳️', shortName(m.home_team), hState, true);
+      const aNode = makeNode(aPt, m.away_flag||'🏳️', shortName(m.away_team), aState, true);
+      hNode.onclick = () => openModal(m);
+      aNode.onclick = () => openModal(m);
+      stage.appendChild(hNode);
+      stage.appendChild(aNode);
+    } else {
+      stage.appendChild(makeNode(hPt,'','','empty',true));
+      stage.appendChild(makeNode(aPt,'','','empty',true));
+    }
+  });
+
+  // Round 2 junctions (8) + connecting lines
+  // Each junction represents the winner advancing from match i (pair of teams 2i,2i+1)
+  for(let i=0;i<8;i++){
+    const a1 = midAngle(ang(4*i,TOTAL), ang(4*i+1,TOTAL));
+    const a2 = midAngle(ang(4*i+2,TOTAL), ang(4*i+3,TOTAL));
+    const j1 = pt(R1,a1), j2 = pt(R1,a2);
+    const aNext = midAngle(a1,a2);
+    
+    // Which original matches feed into j1 and j2
+    const matchIdx1 = Math.floor((4*i)/2);   // match index for teams 4i,4i+1
+    const matchIdx2 = Math.floor((4*i+2)/2); // match index for teams 4i+2,4i+3
+    const m1 = matches[matchIdx1], m2 = matches[matchIdx2];
+    
+    function getWinnerInfo(m){
+      if(!m || !m.home_team || m.home_team==='Por definir') return null;
+      if(m.home_score===null || m.away_score===null) return null;
+      if(m.home_score===m.away_score) return null; // draw, no winner yet conceptually
+      return m.home_score > m.away_score ? {flag:m.home_flag,name:m.home_team} : {flag:m.away_flag,name:m.away_team};
+    }
+    const w1 = getWinnerInfo(m1);
+    const w2 = getWinnerInfo(m2);
+
+    const n1Pt = pt(R2*0.92, a1); // slightly inward individual slot for winner 1
+    const n2Pt = pt(R2*0.92, a2);
+    const nPt = pt(R2, aNext);
+
+    lines.push(svgLine(j1.x,j1.y,nPt.x,nPt.y, w1?'rgba(0,230,118,0.35)':'rgba(255,255,255,0.05)',w1?1.5:1));
+    lines.push(svgLine(j2.x,j2.y,nPt.x,nPt.y, w2?'rgba(0,230,118,0.35)':'rgba(255,255,255,0.05)',w2?1.5:1));
+
+    if(w1){
+      stage.appendChild(makeNode(j1, w1.flag, '', 'winner', false));
+    }
+    if(w2){
+      stage.appendChild(makeNode(j2, w2.flag, '', 'winner', false));
+    }
+    stage.appendChild(makeNode(nPt,'','','empty',false));
+  }
+  // Round 3 junctions (4)
+  for(let i=0;i<4;i++){
+    const a1 = midAngle(ang(8*i,TOTAL), ang(8*i+3,TOTAL));
+    const a2 = midAngle(ang(8*i+4,TOTAL), ang(8*i+7,TOTAL));
+    const j1 = pt(R2,a1), j2 = pt(R2,a2);
+    const aNext = midAngle(a1,a2);
+    const nPt = pt(R3, aNext);
+    lines.push(svgLine(j1.x,j1.y,nPt.x,nPt.y,'rgba(255,255,255,0.04)',1));
+    lines.push(svgLine(j2.x,j2.y,nPt.x,nPt.y,'rgba(255,255,255,0.04)',1));
+    stage.appendChild(makeNode(nPt,'','','empty',false));
+  }
+  // Final junctions (2) -> center
+  for(let i=0;i<2;i++){
+    const a1 = midAngle(ang(16*i,TOTAL), ang(16*i+7,TOTAL));
+    const a2 = midAngle(ang(16*i+8,TOTAL), ang(16*i+15,TOTAL));
+    const j1 = pt(R3,a1), j2 = pt(R3,a2);
+    lines.push(svgLine(j1.x,j1.y,cx,cy,'rgba(255,255,255,0.04)',1));
+  }
+
+  const svg = document.createElement('div');
+  svg.innerHTML = `<svg width="${SIZE}" height="${SIZE}" style="position:absolute;top:0;left:0;pointer-events:none">${svgContent}${lines.join('')}</svg>`;
+  stage.prepend(svg.firstChild);
+
+  // Center trophy
+  const trophy = document.createElement('div');
+  trophy.className = 'trophy-center';
+  trophy.style.left = cx+'px'; trophy.style.top = cy+'px';
+  trophy.style.width = (RFIN*2)+'px'; trophy.style.height = (RFIN*2)+'px';
+  trophy.innerHTML = `<span style="font-size:${RFIN*1.1}px">🏆</span>`;
+  stage.appendChild(trophy);
+}
+
+function openModal(m){
+  document.getElementById('modal-teams').textContent = `${m.home_flag||'🏳️'} ${m.home_team}  vs  ${m.away_team} ${m.away_flag||'🏳️'}`;
+  document.getElementById('modal-date').textContent = m.match_date || 'Fecha por confirmar';
+  const scoreEl = document.getElementById('modal-score');
+  const winEl = document.getElementById('modal-winner');
+  if(m.home_score !== null && m.away_score !== null){
+    scoreEl.textContent = `${m.home_score} — ${m.away_score}`;
+    scoreEl.style.display='block';
+    const w = m.home_score > m.away_score ? m.home_team : m.away_score > m.home_score ? m.away_team : null;
+    winEl.textContent = w ? `🏆 Avanza: ${w}` : '🟡 Empate';
+    winEl.style.display='block';
+  } else {
+    scoreEl.style.display='none';
+    winEl.textContent = '⏳ Partido pendiente';
+    winEl.style.display='block';
+  }
+  document.getElementById('overlay').classList.add('show');
+}
+function closeModal(){ document.getElementById('overlay').classList.remove('show'); }
+
+async function init(){
+  setup();
+  const { data: sess } = await sb.auth.getSession();
+  if(!sess?.session){
+    await sb.auth.signInWithPassword({ email:'admin@pickbros.com', password:'Admin2026' });
+  }
+  const { data, error } = await sb.from('elimination_matches').select('*').eq('round','16avos').order('id');
+
+  document.getElementById('loading').style.display='none';
+  if(error || !data){
+    document.getElementById('loading').textContent='Error cargando datos';
+    document.getElementById('loading').style.display='block';
+    return;
+  }
+  const matches = [...data];
+  while(matches.length < 16){
+    matches.push({ home_team:'Por definir', away_team:'Por definir', home_flag:'🏳️', away_flag:'🏳️', home_score:null, away_score:null });
+  }
+  render(matches);
+}
+init();
+</script>
+</body>
+</html>
