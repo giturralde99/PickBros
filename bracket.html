@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PickBros · Bracket</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#080c09; font-family:'DM Sans',sans-serif; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; }
+
+.header { text-align:center; margin-bottom:10px; }
+.logo { font-family:'Black Han Sans',sans-serif; font-size:20px; color:#fff; letter-spacing:1px; }
+.logo span { color:#00E676; }
+.sub { font-size:10px; color:rgba(255,255,255,0.3); margin-top:2px; }
+
+canvas { display:block; border-radius:16px; }
+
+.info-box { margin-top:12px; min-height:36px; background:rgba(0,230,118,0.06); border:0.5px solid rgba(0,230,118,0.2); border-radius:10px; padding:8px 14px; text-align:center; width:100%; max-width:360px; display:none; }
+.info-box.visible { display:block; }
+.info-match { font-size:13px; font-weight:700; color:#fff; }
+.info-result { font-size:11px; color:#00E676; margin-top:2px; font-weight:600; }
+.info-pending { font-size:11px; color:rgba(255,255,255,0.3); margin-top:2px; }
+
+.legend { display:flex; gap:16px; justify-content:center; margin-top:10px; }
+.legend-item { display:flex; align-items:center; gap:5px; font-size:9px; color:rgba(255,255,255,0.3); }
+.legend-dot { width:8px; height:8px; border-radius:50%; }
+
+.loading { color:rgba(255,255,255,0.4); font-size:13px; padding:40px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">PICK<span>BROS</span></div>
+  <div class="sub">Bracket · Copa del Mundo 2026 · Toca un equipo</div>
+</div>
+
+<div class="loading" id="loading">Cargando bracket...</div>
+<canvas id="c" style="display:none"></canvas>
+
+<div class="info-box" id="infoBox">
+  <div class="info-match" id="infoMatch"></div>
+  <div id="infoResult"></div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#00E676"></div>Ganador</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(255,255,255,0.15)"></div>Pendiente</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(255,255,255,0.06)"></div>Eliminado</div>
+</div>
+
+<script>
+const SB_URL = 'https://mktthenyladkhtptregx.supabase.co';
+const SB_KEY = 'sb_publishable_Gj1rbCjl47I2Ienb6SKn-w_KeZs4zgL';
+const sb = window.supabase.createClient(SB_URL, SB_KEY);
+
+const SIZE = Math.min(window.innerWidth - 32, 360);
+const W = SIZE, H = SIZE, cx = W/2, cy = H/2;
+const GREEN = '#00E676';
+const NODER = SIZE * 0.044;
+
+// Radii as fraction of SIZE
+const RR16 = SIZE * 0.43;
+const RR8  = SIZE * 0.315;
+const RQF  = SIZE * 0.205;
+const RSF  = SIZE * 0.125;
+const RFIN = SIZE * 0.058;
+
+const nodes = [];
+
+function ang(i, total) {
+  return (i / total) * 2 * Math.PI - Math.PI / 2;
+}
+function pt(r, a) {
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+}
+
+function drawNode(ctx, x, y, flag, name, isWinner, isLoser, hasResult) {
+  ctx.beginPath();
+  ctx.arc(x, y, NODER, 0, 2 * Math.PI);
+  ctx.fillStyle = isWinner ? 'rgba(0,230,118,0.2)' : isLoser ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.07)';
+  ctx.fill();
+  ctx.strokeStyle = isWinner ? GREEN : isLoser ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = isWinner ? 2 : 1;
+  ctx.stroke();
+
+  ctx.globalAlpha = isLoser ? 0.25 : 1;
+  ctx.font = `${NODER * 0.85}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(flag, x, y);
+  ctx.globalAlpha = 1;
+
+  // Name outside
+  const a = Math.atan2(y - cy, x - cx);
+  const nx = x + Math.cos(a) * (NODER + 10);
+  const ny = y + Math.sin(a) * (NODER + 10);
+  ctx.font = `bold ${NODER * 0.5}px system-ui`;
+  ctx.fillStyle = isWinner ? GREEN : isLoser ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.6)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, nx, ny);
+}
+
+function drawTBD(ctx, x, y) {
+  ctx.beginPath();
+  ctx.arc(x, y, NODER * 0.65, 0, 2 * Math.PI);
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.font = `${NODER * 0.45}px system-ui`;
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('?', x, y);
+}
+
+function render(matches) {
+  const canvas = document.getElementById('c');
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.display = 'block';
+  document.getElementById('loading').style.display = 'none';
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  nodes.length = 0;
+
+  // Faint rings
+  [RR16 + NODER * 1.2, RR8, RQF, RSF].forEach(r => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  // Center trophy
+  ctx.beginPath();
+  ctx.arc(cx, cy, RFIN, 0, 2 * Math.PI);
+  ctx.fillStyle = 'rgba(0,230,118,0.12)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,230,118,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.font = `${RFIN * 1.0}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🏆', cx, cy);
+
+  const N = 16;
+
+  matches.forEach((m, i) => {
+    const a = ang(i, N);
+    const hPt = pt(RR16, a);
+    const aPt = pt(RR8 + NODER * 0.3, a);
+    const jPt = pt(RR8 - NODER * 1.2, a); // junction between both teams
+    const nextPt = pt(RQF + NODER * 0.6, a); // toward next round
+
+    const hasResult = m.home_score !== null && m.away_score !== null;
+    const homeWins = hasResult && m.home_score > m.away_score;
+    const awayWins = hasResult && m.away_score > m.home_score;
+    const draw = hasResult && m.home_score === m.away_score;
+
+    const lineColor = hasResult ? 'rgba(0,230,118,0.25)' : 'rgba(255,255,255,0.09)';
+    const dimColor = 'rgba(255,255,255,0.04)';
+
+    // Home to junction
+    ctx.beginPath();
+    ctx.moveTo(hPt.x, hPt.y);
+    ctx.lineTo(jPt.x, jPt.y);
+    ctx.strokeStyle = homeWins ? 'rgba(0,230,118,0.35)' : (awayWins && hasResult ? dimColor : lineColor);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Away to junction
+    ctx.beginPath();
+    ctx.moveTo(aPt.x, aPt.y);
+    ctx.lineTo(jPt.x, jPt.y);
+    ctx.strokeStyle = awayWins ? 'rgba(0,230,118,0.35)' : (homeWins && hasResult ? dimColor : lineColor);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Junction dot
+    ctx.beginPath();
+    ctx.arc(jPt.x, jPt.y, 3, 0, 2 * Math.PI);
+    ctx.fillStyle = hasResult ? 'rgba(0,230,118,0.5)' : 'rgba(255,255,255,0.15)';
+    ctx.fill();
+
+    // Junction to next round
+    ctx.beginPath();
+    ctx.moveTo(jPt.x, jPt.y);
+    ctx.lineTo(nextPt.x, nextPt.y);
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Nodes
+    drawNode(ctx, hPt.x, hPt.y, m.home_flag || '🏳️', m.home_team || '?', homeWins || draw, awayWins && hasResult, hasResult);
+    drawNode(ctx, aPt.x, aPt.y, m.away_flag || '🏳️', m.away_team || '?', awayWins || draw, homeWins && hasResult, hasResult);
+
+    nodes.push({ x: hPt.x, y: hPt.y, m, team: 'home' });
+    nodes.push({ x: aPt.x, y: aPt.y, m, team: 'away' });
+  });
+
+  // TBD nodes for future rounds
+  const futureRounds = [
+    { r: RQF, count: 8 },
+    { r: RSF, count: 4 },
+    { r: RFIN + NODER * 1.8, count: 2 },
+  ];
+  futureRounds.forEach(({ r, count }) => {
+    for (let i = 0; i < count; i++) {
+      const a = ang(i * (16 / count) + (16 / count / 2), 16);
+      const p = pt(r, a);
+      drawTBD(ctx, p.x, p.y);
+    }
+  });
+
+  // Click handler
+  canvas.onclick = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (W / rect.width);
+    const my = (e.clientY - rect.top) * (H / rect.height);
+    for (const n of nodes) {
+      const dx = mx - n.x, dy = my - n.y;
+      if (Math.sqrt(dx * dx + dy * dy) < NODER + 6) {
+        const m = n.m;
+        const box = document.getElementById('infoBox');
+        const matchEl = document.getElementById('infoMatch');
+        const resultEl = document.getElementById('infoResult');
+        matchEl.textContent = `${m.home_flag} ${m.home_team} vs ${m.away_team} ${m.away_flag}`;
+        if (m.home_score !== null && m.away_score !== null) {
+          resultEl.innerHTML = `<div class="info-result">Resultado final: ${m.home_score} — ${m.away_score} · ${m.home_score > m.away_score ? m.home_team : m.away_score > m.home_score ? m.away_team : 'Empate'}</div>`;
+        } else {
+          resultEl.innerHTML = `<div class="info-pending">${m.match_date || 'Fecha por confirmar'}</div>`;
+        }
+        box.classList.add('visible');
+        return;
+      }
+    }
+  };
+}
+
+async function init() {
+  // Silent auth
+  const { data: sess } = await sb.auth.getSession();
+  if (!sess?.session) {
+    await sb.auth.signInWithPassword({ email: 'admin@pickbros.com', password: 'Admin2026' });
+  }
+
+  const { data, error } = await sb.from('elimination_matches')
+    .select('*')
+    .eq('round', '16avos')
+    .order('id');
+
+  if (error || !data) {
+    document.getElementById('loading').textContent = 'Error cargando datos';
+    return;
+  }
+
+  // Pad to 16 if needed
+  const matches = [...data];
+  while (matches.length < 16) {
+    matches.push({ home_team: 'Por definir', away_team: 'Por definir', home_flag: '🏳️', away_flag: '🏳️', home_score: null, away_score: null, match_date: null });
+  }
+
+  render(matches);
+}
+
+init();
+</script>
+</body>
+</html>
