@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PickBros · Bracket Test</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=DM+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:100%; height:100%; background:#080c09; font-family:'DM Sans',sans-serif; overflow-x:hidden; }
+#wrap { display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:20px 0 40px; }
+.top-bar { width:100%; text-align:center; padding:0 18px 14px; }
+.logo { font-family:'Black Han Sans',sans-serif; font-size:20px; color:#fff; }
+.logo span { color:#00E676; }
+.round-label { font-size:10px; color:rgba(255,255,255,0.35); letter-spacing:1.5px; margin-top:4px; }
+#stage { position:relative; }
+svg { position:absolute; top:0; left:0; pointer-events:none; }
+.node { position:absolute; transform:translate(-50%,-50%); border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.node-w { background:rgba(0,230,118,0.22); border:2px solid #00E676; box-shadow:0 0 8px rgba(0,230,118,0.3); }
+.node-l { background:rgba(0,0,0,0.65); border:1px solid rgba(255,255,255,0.07); opacity:0.4; }
+.node-d { background:rgba(255,200,0,0.15); border:2px solid rgba(255,200,0,0.6); }
+.node-p { background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.22); }
+.node-e { background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.06); }
+.trophy { position:absolute; transform:translate(-50%,-50%); border-radius:50%; background:rgba(0,230,118,0.12); border:1.5px solid rgba(0,230,118,0.5); display:flex; align-items:center; justify-content:center; }
+#overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:200; padding:20px; }
+#overlay.show { display:flex; }
+#modal { background:#0d1a12; border:1px solid rgba(0,230,118,0.2); border-radius:18px; padding:22px; max-width:320px; width:100%; text-align:center; }
+#m-round { font-size:10px; color:#00E676; letter-spacing:1.5px; text-transform:uppercase; font-weight:800; margin-bottom:8px; }
+#m-teams { font-size:15px; font-weight:800; color:#fff; margin-bottom:6px; }
+#m-date { font-size:11px; color:rgba(255,255,255,0.4); margin-bottom:8px; }
+#m-score { font-size:28px; font-weight:900; color:#00E676; letter-spacing:-1px; }
+#m-winner { font-size:13px; color:rgba(255,255,255,0.6); font-weight:700; margin-top:6px; }
+#m-close { margin-top:16px; background:rgba(255,255,255,0.08); border:none; border-radius:10px; padding:10px 24px; color:#fff; font-family:'DM Sans'; font-weight:700; font-size:13px; cursor:pointer; width:100%; }
+.elim-section { width:100%; max-width:380px; padding:12px 16px 0; }
+.elim-title { font-size:10px; color:rgba(255,255,255,0.3); letter-spacing:1.5px; text-transform:uppercase; font-weight:700; margin-bottom:8px; text-align:center; }
+.elim-chips { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+.elim-chip { display:flex; align-items:center; gap:5px; background:rgba(255,255,255,0.03); border:0.5px solid rgba(255,255,255,0.08); border-radius:100px; padding:5px 10px; opacity:0.5; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="top-bar">
+    <div class="logo">PICK<span>BROS</span></div>
+    <div class="round-label">BRACKET ELIMINATORIA · COPA DEL MUNDO 2026</div>
+  </div>
+  <div id="stage"></div>
+  <div class="elim-section" id="elimSection" style="display:none">
+    <div class="elim-title">💀 Eliminados</div>
+    <div class="elim-chips" id="elimChips"></div>
+  </div>
+</div>
+
+<div id="overlay" onclick="if(event.target===this)closeModal()">
+  <div id="modal">
+    <div id="m-round"></div>
+    <div id="m-teams"></div>
+    <div id="m-date"></div>
+    <div id="m-score" style="display:none"></div>
+    <div id="m-winner"></div>
+    <button id="m-close" onclick="closeModal()">Cerrar</button>
+  </div>
+</div>
+
+<script>
+const SB_URL='https://mktthenyladkhtptregx.supabase.co';
+const SB_KEY='sb_publishable_Gj1rbCjl47I2Ienb6SKn-w_KeZs4zgL';
+const sb=window.supabase.createClient(SB_URL,SB_KEY);
+
+const BRACKET_PAIRS=[[0,3],[2,5],[8,9],[10,11],[1,4],[6,7],[12,15],[13,14]];
+const ORDER=[];
+BRACKET_PAIRS.forEach(function(p){ORDER.push(p[0]);ORDER.push(p[1]);});
+
+function ang(i,n){return (i/n)*2*Math.PI-Math.PI/2;}
+function pt(r,a,cx,cy){return{x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)};}
+function midAng(a1,a2){var d=a2-a1;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;return a1+d/2;}
+
+function getWinner(m){
+  if(!m||!m.home_team||m.home_team==='Por definir')return null;
+  if(m.home_score===null||m.away_score===null)return null;
+  if(m.home_score===m.away_score){
+    if(m.penalty_winner===m.home_team)return{flag:m.home_flag,name:m.home_team};
+    if(m.penalty_winner===m.away_team)return{flag:m.away_flag,name:m.away_team};
+    return null;
+  }
+  return m.home_score>m.away_score?{flag:m.home_flag,name:m.home_team}:{flag:m.away_flag,name:m.away_team};
+}
+
+function nodeClass(state){
+  return state==='winner'?'node-w':state==='loser'?'node-l':state==='draw'?'node-d':state==='pending'?'node-p':'node-e';
+}
+
+function makeSvgLine(x1,y1,x2,y2,color,width){
+  return '<line x1="'+x1.toFixed(1)+'" y1="'+y1.toFixed(1)+'" x2="'+x2.toFixed(1)+'" y2="'+y2.toFixed(1)+'" stroke="'+color+'" stroke-width="'+width+'" stroke-linecap="round"/>';
+}
+function makeSvgCircle(x,y,r,color){
+  return '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+r+'" fill="'+color+'"/>';
+}
+function makeSvgRing(cx,cy,r){
+  return '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="rgba(255,255,255,0.045)" stroke-width="0.5"/>';
+}
+
+function matchSt(m){
+  if(!m)return{hasR:false,hW:false,aW:false,isDraw:false};
+  var hasR=m.home_score!==null&&m.away_score!==null;
+  if(!hasR)return{hasR:false,hW:false,aW:false,isDraw:false};
+  var hW=m.home_score>m.away_score,aW=m.away_score>m.home_score,isDraw=m.home_score===m.away_score;
+  if(isDraw&&m.penalty_winner){hW=m.penalty_winner===m.home_team;aW=m.penalty_winner===m.away_team;isDraw=false;}
+  return{hasR:true,hW:hW,aW:aW,isDraw:isDraw};
+}
+
+function render(data){
+  var all=data||[];
+  var pad=function(arr,n){var a=arr.slice();while(a.length<n)a.push({home_team:'Por definir',away_team:'Por definir',home_flag:'🏳️',away_flag:'🏳️',home_score:null,away_score:null,penalty_winner:null});return a;};
+  var r16=pad(all.filter(function(m){return m.round==='16avos';}),16);
+  var r8= pad(all.filter(function(m){return m.round==='8vos';}),8);
+  var qf= pad(all.filter(function(m){return m.round==='Cuartos';}),4);
+  var sf= pad(all.filter(function(m){return m.round==='Semis';}),2);
+  var fin=pad(all.filter(function(m){return m.round==='Final';}),1);
+
+  var SIZE=Math.min(window.innerWidth-16,480);
+  var cx=SIZE/2,cy=SIZE/2;
+  var R=[SIZE*0.46,SIZE*0.355,SIZE*0.255,SIZE*0.165,SIZE*0.095];
+  var ND=[SIZE*0.046,SIZE*0.05,SIZE*0.054,SIZE*0.058,SIZE*0.062];
+  var RFIN=SIZE*0.05;
+
+  var stage=document.getElementById('stage');
+  stage.style.width=SIZE+'px';
+  stage.style.height=SIZE+'px';
+  stage.innerHTML='';
+
+  var svg='<svg width="'+SIZE+'" height="'+SIZE+'">';
+  svg+=makeSvgRing(cx,cy,R[0]+ND[0]*0.8);
+  svg+=makeSvgRing(cx,cy,R[1]);
+  svg+=makeSvgRing(cx,cy,R[2]);
+  svg+=makeSvgRing(cx,cy,R[3]);
+  var nodes=[];
+
+  // Pre-compute all angles
+  var a1s=[];
+  for(var i=0;i<16;i++){
+    a1s[i]=midAng(ang(2*ORDER[i],32),ang(2*ORDER[i]+1,32));
+  }
+  var a2s=[];
+  for(var i=0;i<8;i++) a2s[i]=midAng(a1s[2*i],a1s[2*i+1]);
+  var a3s=[];
+  for(var i=0;i<4;i++) a3s[i]=midAng(a2s[2*i],a2s[2*i+1]);
+  var a4s=[midAng(a3s[0],a3s[1]),midAng(a3s[2],a3s[3])];
+  var a5=midAng(a4s[0],a4s[1]);
+
+  // R16 matches
+  for(var i=0;i<16;i++){
+    var m=r16[ORDER[i]]||{};
+    var aHome=ang(2*i,32),aAway=ang(2*i+1,32);
+    var hP=pt(R[0],aHome,cx,cy),aP=pt(R[0],aAway,cx,cy);
+    var jP=pt(R[1],a1s[i],cx,cy);
+    var isPDef=!m.home_team||m.home_team==='Por definir';
+    var st=matchSt(m);
+    if(!isPDef){
+      var WC='rgba(0,230,118,0.45)',DC='rgba(255,200,0,0.4)',DIM='rgba(255,255,255,0.04)',NRM='rgba(255,255,255,0.13)';
+      svg+=makeSvgLine(hP.x,hP.y,jP.x,jP.y,st.isDraw?DC:st.hW?WC:(st.hasR?DIM:NRM),(st.hW||st.isDraw)?2:1);
+      svg+=makeSvgLine(aP.x,aP.y,jP.x,jP.y,st.isDraw?DC:st.aW?WC:(st.hasR?DIM:NRM),(st.aW||st.isDraw)?2:1);
+      svg+=makeSvgCircle(jP.x,jP.y,st.hasR?3:2,st.hasR?'rgba(0,230,118,0.55)':'rgba(255,255,255,0.15)');
+      var hSt=!st.hasR?'pending':st.isDraw?'draw':st.hW?'winner':'loser';
+      var aSt=!st.hasR?'pending':st.isDraw?'draw':st.aW?'winner':'loser';
+      nodes.push({x:hP.x,y:hP.y,d:ND[0],flag:m.home_flag||'🏳️',cls:nodeClass(hSt),match:m,round:'16avos de Final'});
+      nodes.push({x:aP.x,y:aP.y,d:ND[0],flag:m.away_flag||'🏳️',cls:nodeClass(aSt),match:m,round:'16avos de Final'});
+    } else {
+      nodes.push({x:hP.x,y:hP.y,d:ND[0],flag:'',cls:'node-e',match:null});
+      nodes.push({x:aP.x,y:aP.y,d:ND[0],flag:'',cls:'node-e',match:null});
+    }
+  }
+
+  // R8 matches - at a2s positions
+  for(var i=0;i<8;i++){
+    var m=r8[i]||{};
+    var isPDef=!m.home_team||m.home_team==='Por definir';
+    var st=matchSt(m);
+    var sp=0.055;
+    var hP=pt(R[1],a1s[2*i],cx,cy),aP=pt(R[1],a1s[2*i+1],cx,cy);
+    var jP=pt(R[2],a2s[i],cx,cy);
+    svg+=makeSvgLine(hP.x,hP.y,jP.x,jP.y,'rgba(255,255,255,0.05)',1);
+    svg+=makeSvgLine(aP.x,aP.y,jP.x,jP.y,'rgba(255,255,255,0.05)',1);
+    if(!isPDef){
+      var hP2=pt(R[2],a2s[i]-sp,cx,cy),aP2=pt(R[2],a2s[i]+sp,cx,cy);
+      var WC='rgba(0,230,118,0.4)',DC='rgba(255,200,0,0.35)',DIM='rgba(255,255,255,0.04)',NRM='rgba(255,255,255,0.1)';
+      svg+=makeSvgLine(hP2.x,hP2.y,jP.x,jP.y,st.isDraw?DC:st.hW?WC:(st.hasR?DIM:NRM),(st.hW||st.isDraw)?2:1);
+      svg+=makeSvgLine(aP2.x,aP2.y,jP.x,jP.y,st.isDraw?DC:st.aW?WC:(st.hasR?DIM:NRM),(st.aW||st.isDraw)?2:1);
+      svg+=makeSvgCircle(jP.x,jP.y,st.hasR?2.5:1.8,st.hasR?'rgba(0,230,118,0.5)':'rgba(255,255,255,0.12)');
+      var hSt=!st.hasR?'pending':st.isDraw?'draw':st.hW?'winner':'loser';
+      var aSt=!st.hasR?'pending':st.isDraw?'draw':st.aW?'winner':'loser';
+      nodes.push({x:hP2.x,y:hP2.y,d:ND[1],flag:m.home_flag||'🏳️',cls:nodeClass(hSt),match:m,round:'8vos de Final'});
+      nodes.push({x:aP2.x,y:aP2.y,d:ND[1],flag:m.away_flag||'🏳️',cls:nodeClass(aSt),match:m,round:'8vos de Final'});
+    } else {
+      nodes.push({x:jP.x,y:jP.y,d:ND[1],flag:'',cls:'node-e',match:null});
+    }
+  }
+
+  // QF matches - at a3s positions
+  for(var i=0;i<4;i++){
+    var m=qf[i]||{};
+    var isPDef=!m.home_team||m.home_team==='Por definir';
+    var st=matchSt(m);
+    var sp=0.07;
+    var jP=pt(R[3],a3s[i],cx,cy);
+    var p1=pt(R[2],a2s[2*i],cx,cy),p2=pt(R[2],a2s[2*i+1],cx,cy);
+    svg+=makeSvgLine(p1.x,p1.y,jP.x,jP.y,'rgba(255,255,255,0.04)',1);
+    svg+=makeSvgLine(p2.x,p2.y,jP.x,jP.y,'rgba(255,255,255,0.04)',1);
+    if(!isPDef){
+      var hP=pt(R[3],a3s[i]-sp,cx,cy),aP=pt(R[3],a3s[i]+sp,cx,cy);
+      var WC='rgba(0,230,118,0.4)',DC='rgba(255,200,0,0.35)',DIM='rgba(255,255,255,0.04)',NRM='rgba(255,255,255,0.1)';
+      svg+=makeSvgLine(hP.x,hP.y,jP.x,jP.y,st.isDraw?DC:st.hW?WC:(st.hasR?DIM:NRM),(st.hW||st.isDraw)?2:1);
+      svg+=makeSvgLine(aP.x,aP.y,jP.x,jP.y,st.isDraw?DC:st.aW?WC:(st.hasR?DIM:NRM),(st.aW||st.isDraw)?2:1);
+      svg+=makeSvgCircle(jP.x,jP.y,st.hasR?2.5:1.8,st.hasR?'rgba(0,230,118,0.5)':'rgba(255,255,255,0.12)');
+      var hSt=!st.hasR?'pending':st.isDraw?'draw':st.hW?'winner':'loser';
+      var aSt=!st.hasR?'pending':st.isDraw?'draw':st.aW?'winner':'loser';
+      nodes.push({x:hP.x,y:hP.y,d:ND[2],flag:m.home_flag||'🏳️',cls:nodeClass(hSt),match:m,round:'Cuartos de Final'});
+      nodes.push({x:aP.x,y:aP.y,d:ND[2],flag:m.away_flag||'🏳️',cls:nodeClass(aSt),match:m,round:'Cuartos de Final'});
+    } else {
+      nodes.push({x:jP.x,y:jP.y,d:ND[2],flag:'',cls:'node-e',match:null});
+    }
+  }
+
+  // SF matches - at a4s positions
+  for(var i=0;i<2;i++){
+    var m=sf[i]||{};
+    var isPDef=!m.home_team||m.home_team==='Por definir';
+    var st=matchSt(m);
+    var sp=0.1;
+    var jP=pt(RFIN*2.2,a4s[i],cx,cy);
+    var p1=pt(R[3],a3s[2*i],cx,cy),p2=pt(R[3],a3s[2*i+1],cx,cy);
+    svg+=makeSvgLine(p1.x,p1.y,jP.x,jP.y,'rgba(255,255,255,0.04)',1);
+    svg+=makeSvgLine(p2.x,p2.y,jP.x,jP.y,'rgba(255,255,255,0.04)',1);
+    if(!isPDef){
+      var hP=pt(R[4],a4s[i]-sp,cx,cy),aP=pt(R[4],a4s[i]+sp,cx,cy);
+      var WC='rgba(0,230,118,0.4)',DC='rgba(255,200,0,0.35)',DIM='rgba(255,255,255,0.04)',NRM='rgba(255,255,255,0.1)';
+      svg+=makeSvgLine(hP.x,hP.y,jP.x,jP.y,st.isDraw?DC:st.hW?WC:(st.hasR?DIM:NRM),(st.hW||st.isDraw)?2:1);
+      svg+=makeSvgLine(aP.x,aP.y,jP.x,jP.y,st.isDraw?DC:st.aW?WC:(st.hasR?DIM:NRM),(st.aW||st.isDraw)?2:1);
+      svg+=makeSvgCircle(jP.x,jP.y,st.hasR?2.5:1.8,st.hasR?'rgba(0,230,118,0.5)':'rgba(255,255,255,0.12)');
+      var hSt=!st.hasR?'pending':st.isDraw?'draw':st.hW?'winner':'loser';
+      var aSt=!st.hasR?'pending':st.isDraw?'draw':st.aW?'winner':'loser';
+      nodes.push({x:hP.x,y:hP.y,d:ND[3],flag:m.home_flag||'🏳️',cls:nodeClass(hSt),match:m,round:'Semifinales'});
+      nodes.push({x:aP.x,y:aP.y,d:ND[3],flag:m.away_flag||'🏳️',cls:nodeClass(aSt),match:m,round:'Semifinales'});
+    } else {
+      svg+=makeSvgLine(jP.x,jP.y,cx,cy,'rgba(255,255,255,0.04)',1);
+      nodes.push({x:jP.x,y:jP.y,d:ND[3],flag:'',cls:'node-e',match:null});
+    }
+  }
+
+  svg+='</svg>';
+  stage.innerHTML=svg;
+
+  // Trophy center
+  var tr=document.createElement('div');
+  tr.className='trophy';
+  tr.style.cssText='left:'+cx+'px;top:'+cy+'px;width:'+(RFIN*2)+'px;height:'+(RFIN*2)+'px;font-size:'+(RFIN*1.1)+'px;';
+  tr.textContent='🏆';
+  stage.appendChild(tr);
+
+  // Render nodes
+  nodes.forEach(function(n){
+    var div=document.createElement('div');
+    div.className='node '+n.cls;
+    div.style.cssText='left:'+n.x+'px;top:'+n.y+'px;width:'+n.d+'px;height:'+n.d+'px;font-size:'+(n.d*0.5)+'px;';
+    div.textContent=n.flag||'?';
+    if(n.match) div.onclick=(function(m,r){return function(){openModal(m,r);};})(n.match,n.round);
+    stage.appendChild(div);
+  });
+
+  // Eliminated list
+  var elim=[];
+  r16.forEach(function(m){
+    if(!m.home_team||m.home_team==='Por definir')return;
+    if(m.home_score===null||m.away_score===null)return;
+    if(m.home_score===m.away_score){
+      if(m.penalty_winner===m.home_team) elim.push({flag:m.away_flag,name:m.away_team});
+      else if(m.penalty_winner===m.away_team) elim.push({flag:m.home_flag,name:m.home_team});
+    } else {
+      elim.push(m.home_score>m.away_score?{flag:m.away_flag,name:m.away_team}:{flag:m.home_flag,name:m.home_team});
+    }
+  });
+  if(elim.length>0){
+    var sec=document.getElementById('elimSection');
+    sec.style.display='block';
+    sec.style.marginTop='12px';
+    var chips=document.getElementById('elimChips');
+    chips.innerHTML=elim.map(function(e){return '<div class="elim-chip"><span>'+e.flag+'</span><span style="font-size:11px;color:rgba(255,255,255,0.4);font-weight:600;">'+e.name+'</span></div>';}).join('');
+  }
+}
+
+function openModal(m,roundLabel){
+  document.getElementById('m-round').textContent=roundLabel||'16avos de Final';
+  document.getElementById('m-teams').textContent=(m.home_flag||'🏳️')+' '+m.home_team+'  vs  '+m.away_team+' '+(m.away_flag||'🏳️');
+  document.getElementById('m-date').textContent=m.match_date||'Fecha por confirmar';
+  var sc=document.getElementById('m-score');
+  var wn=document.getElementById('m-winner');
+  if(m.home_score!==null&&m.away_score!==null){
+    sc.textContent=m.home_score+' — '+m.away_score;
+    sc.style.display='block';
+    var w=m.home_score>m.away_score?m.home_team:m.away_score>m.home_score?m.away_team:null;
+    if(m.home_score===m.away_score&&m.penalty_winner) w=m.penalty_winner;
+    wn.textContent=w?'🏆 Avanza: '+w:'🟡 Empate';
+  } else {
+    sc.style.display='none';
+    wn.textContent='⏳ Partido pendiente';
+  }
+  document.getElementById('overlay').classList.add('show');
+}
+function closeModal(){document.getElementById('overlay').classList.remove('show');}
+
+async function init(){
+  var sess=await sb.auth.getSession();
+  if(!sess.data?.session) await sb.auth.signInWithPassword({email:'admin@pickbros.com',password:'Admin2026'});
+  var res=await sb.from('elimination_matches').select('*').order('id');
+  if(res.data) render(res.data);
+}
+init();
+</script>
+</body>
+</html>
